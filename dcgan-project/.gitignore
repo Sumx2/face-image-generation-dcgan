@@ -1,0 +1,64 @@
+# # Node.js
+# node_modules/
+# .npm
+# dist/
+# build/
+# .env
+
+# # Python
+# __pycache__/
+# *.pyc
+# venv/
+# env/
+# .venv/
+
+# # Large Model files
+# *.pth
+# *.pt
+
+# # OS generated files
+# .DS_Store
+# Thumbs.db
+
+# # Dataset
+# dataset/
+# data/
+# celeba/
+# *.zip
+# img_align_celeba.zip
+
+
+# Node.js
+node_modules/
+dist/
+build/
+.npm
+
+# Python
+__pycache__/
+*.pyc
+venv/
+env/
+.venv/
+
+# Model files
+*.pth
+*.pt
+
+# Dataset
+training/dataset/
+data/
+*.zip
+
+# Environment
+.env
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
