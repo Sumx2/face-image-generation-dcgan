@@ -47,6 +47,7 @@ env/
 
 # Dataset
 training/dataset/
+training/outputs/
 data/
 *.zip
 

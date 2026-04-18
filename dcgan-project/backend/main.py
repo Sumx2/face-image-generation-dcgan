@@ -43,21 +43,34 @@ def read_root():
     return {"message": "Welcome to DCGAN Face Generator API. Use /generate to get images."}
 
 @app.get("/generate", response_model=GenerationResponse)
-def generate_faces(count: int = Query(1, ge=1, le=16, description="Number of faces to generate")):
+def generate_faces(
+    count: int = Query(1, ge=1, le=16, description="Number of faces to generate"),
+    seed: int = Query(None, description="Optional seed for deterministic generation"),
+    male: bool = Query(False, description="Generate a male face"),
+    smiling: bool = Query(False, description="Generate a smiling face"),
+    glasses: bool = Query(False, description="Generate a face with glasses")
+):
     """
-    Generate random face images using the DCGAN model.
-    Count determines how many images to return (max 16 to avoid overload).
+    Generate random face images using the Conditional DCGAN model.
     """
     if generator is None:
         raise HTTPException(status_code=500, detail="Generator model not properly initialized.")
         
     try:
-        # Generate random noise
+        if seed is not None:
+            torch.manual_seed(seed)
+            
         noise = torch.randn(count, Z_DIM, 1, 1).to(DEVICE)
+        
+        # Build labels tensor [male, smiling, glasses]
+        labels = torch.zeros(count, 3).to(DEVICE)
+        labels[:, 0] = 1.0 if male else 0.0
+        labels[:, 1] = 1.0 if smiling else 0.0
+        labels[:, 2] = 1.0 if glasses else 0.0
         
         # Inference
         with torch.no_grad():
-            fake_tensors = generator(noise)
+            fake_tensors = generator(noise, labels)
             
         # Convert output to Base64
         base64_list = tensor_to_base64_images(fake_tensors)

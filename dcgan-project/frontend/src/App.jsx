@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Download, Sparkles, Image as ImageIcon, Loader2, Layers, RefreshCw } from 'lucide-react';
 
-const API_URL = 'http://localhost:8080/generate';
+const API_URL = 'http://localhost:8000/generate';
 
 function App() {
   const [images, setImages] = useState([]);
@@ -10,6 +10,10 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [count, setCount] = useState(1);
+  const [seed, setSeed] = useState("");
+  const [male, setMale] = useState(false);
+  const [smiling, setSmiling] = useState(false);
+  const [glasses, setGlasses] = useState(false);
 
   // Load history from local storage on mount
   useEffect(() => {
@@ -27,7 +31,16 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get(`${API_URL}?count=${count}`);
+      const queryParams = new URLSearchParams({ 
+        count: count.toString(),
+        male: male.toString(),
+        smiling: smiling.toString(),
+        glasses: glasses.toString()
+      });
+      if (seed && !isNaN(parseInt(seed))) {
+          queryParams.append("seed", parseInt(seed).toString());
+      }
+      const response = await axios.get(`${API_URL}?${queryParams}`);
       const newImages = response.data.images;
       setImages(newImages);
       
@@ -87,19 +100,59 @@ function App() {
             <label className="text-slate-400 font-medium text-sm flex items-center gap-2">
               <Layers className="w-4 h-4" /> Count:
             </label>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
                {[1, 4, 8].map(num => (
                  <button
                    key={num}
                    onClick={() => setCount(num)}
-                   className={`w-8 h-8 rounded-full text-sm font-bold transition-all ${count === num ? 'bg-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.5)]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                   className={`w-7 h-7 rounded-full text-xs font-bold transition-all ${count === num ? 'bg-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.5)]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
                  >
                    {num}
                  </button>
                ))}
             </div>
+            
+            <div className="h-6 w-px bg-white/10 mx-1"></div>
+            
+            <label className="text-slate-400 font-medium text-xs flex items-center gap-1">Seed:</label>
+            <input 
+              type="number"
+              placeholder="Rndm"
+              value={seed}
+              onChange={(e) => setSeed(e.target.value)}
+              className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-indigo-500 transition-colors"
+            />
           </div>
-          
+        </div>
+
+        {/* Attribute Toggles */}
+        <div className="glass-panel w-full max-w-sm rounded-3xl p-4 mb-10 flex justify-between items-center bg-slate-950/40 animate-fade-in shadow-xl border border-indigo-500/10">
+           <label className="flex items-center cursor-pointer gap-2 select-none group">
+             <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${male ? 'bg-indigo-500' : 'bg-slate-800 group-hover:bg-slate-700'}`}>
+               <input type="checkbox" className="hidden" checked={male} onChange={() => setMale(!male)} />
+               {male && <div className="w-2.5 h-2.5 bg-white rounded-sm"></div>}
+             </div>
+             <span className={`text-sm font-medium ${male ? 'text-white' : 'text-slate-400'}`}>Male</span>
+           </label>
+           
+           <label className="flex items-center cursor-pointer gap-2 select-none group">
+             <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${smiling ? 'bg-indigo-500' : 'bg-slate-800 group-hover:bg-slate-700'}`}>
+               <input type="checkbox" className="hidden" checked={smiling} onChange={() => setSmiling(!smiling)} />
+               {smiling && <div className="w-2.5 h-2.5 bg-white rounded-sm"></div>}
+             </div>
+             <span className={`text-sm font-medium ${smiling ? 'text-white' : 'text-slate-400'}`}>Smiling</span>
+           </label>
+           
+           <label className="flex items-center cursor-pointer gap-2 select-none group">
+             <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${glasses ? 'bg-indigo-500' : 'bg-slate-800 group-hover:bg-slate-700'}`}>
+               <input type="checkbox" className="hidden" checked={glasses} onChange={() => setGlasses(!glasses)} />
+               {glasses && <div className="w-2.5 h-2.5 bg-white rounded-sm"></div>}
+             </div>
+             <span className={`text-sm font-medium ${glasses ? 'text-white' : 'text-slate-400'}`}>Glasses</span>
+           </label>
+        </div>
+        
+        <div className="mb-12 animate-fade-in">
           <button
             onClick={handleGenerate}
             disabled={loading}
