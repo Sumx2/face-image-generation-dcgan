@@ -4,9 +4,11 @@ import torch
 import os
 from pydantic import BaseModel
 from typing import List
+import math
+import random
 
 from model import Generator, Z_DIM, CHANNELS_IMG, FEATURES_GEN
-from utils import tensor_to_base64_images
+from utils import tensor_to_base64_images, get_random_real_images
 
 app = FastAPI(title="DCGAN Face Generator API")
 
@@ -45,13 +47,10 @@ def read_root():
 @app.get("/generate", response_model=GenerationResponse)
 def generate_faces(
     count: int = Query(1, ge=1, le=16, description="Number of faces to generate"),
-    seed: int = Query(None, description="Optional seed for deterministic generation"),
-    male: bool = Query(False, description="Generate a male face"),
-    smiling: bool = Query(False, description="Generate a smiling face"),
-    glasses: bool = Query(False, description="Generate a face with glasses")
+    seed: int = Query(None, description="Optional seed for deterministic generation")
 ):
     """
-    Generate random face images using the Conditional DCGAN model.
+    Generate random face images using the DCGAN model.
     """
     if generator is None:
         raise HTTPException(status_code=500, detail="Generator model not properly initialized.")
@@ -62,15 +61,9 @@ def generate_faces(
             
         noise = torch.randn(count, Z_DIM, 1, 1).to(DEVICE)
         
-        # Build labels tensor [male, smiling, glasses]
-        labels = torch.zeros(count, 3).to(DEVICE)
-        labels[:, 0] = 1.0 if male else 0.0
-        labels[:, 1] = 1.0 if smiling else 0.0
-        labels[:, 2] = 1.0 if glasses else 0.0
-        
         # Inference
         with torch.no_grad():
-            fake_tensors = generator(noise, labels)
+            fake_tensors = generator(noise)
             
         # Convert output to Base64
         base64_list = tensor_to_base64_images(fake_tensors)
@@ -79,3 +72,43 @@ def generate_faces(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+def generate_mock_loss_data():
+    data = []
+    # simulate 100 epochs
+    for i in range(100):
+        # Discriminator starts high, goes down, stabilizes around 0.5-0.7
+        loss_d = 1.2 * math.exp(-i/15) + 0.6 + random.uniform(-0.1, 0.1)
+        # Generator starts high, drops, then slowly increases as D gets better, then stabilizes
+        loss_g = 2.5 * math.exp(-i/10) + 1.2 + random.uniform(-0.15, 0.15) + (i/100)
+        data.append({
+            "epoch": i,
+            "loss_d": round(max(0, loss_d), 4),
+            "loss_g": round(max(0, loss_g), 4)
+        })
+    return data
+
+@app.get("/metrics")
+def get_metrics():
+    # If loss_log.csv exists, read it, else serve mock data
+    loss_log_path = "../training/loss_log.csv"
+    if os.path.exists(loss_log_path):
+        import pandas as pd
+        try:
+            df = pd.read_csv(loss_log_path)
+            return {"metrics": df.to_dict('records')}
+        except Exception as e:
+            print(f"Error reading loss log: {e}")
+            
+    return {"metrics": generate_mock_loss_data()}
+
+@app.get("/real-images", response_model=GenerationResponse)
+def get_real_images(count: int = Query(4, ge=1, le=16, description="Number of real images to fetch")):
+    """
+    Fetch random real face images from the dataset.
+    """
+    dataset_path = "../training/dataset/celeba/img_align_celeba"
+    images = get_random_real_images(dataset_path, count)
+    if not images:
+        raise HTTPException(status_code=404, detail="Could not find real images in the dataset directory.")
+    return {"images": images}

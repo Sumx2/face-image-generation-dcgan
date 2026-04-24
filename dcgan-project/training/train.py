@@ -12,26 +12,25 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from tqdm import tqdm
+import csv
 
 # Hyperparameters etc.
 LEARNING_RATE = 2e-4  # From DCGAN paper
 BATCH_SIZE = 128
-NUM_EPOCHS = 100 # Adjust based on time available
+NUM_EPOCHS = 50 # Adjusted for A100 full dataset training
 BETA1 = 0.5 # From DCGAN paper
 DATASET_ROOT = "dataset/"
 
-class CelebAConditionalDataset(torch.utils.data.Dataset):
+class CelebADataset(torch.utils.data.Dataset):
     def __init__(self, root_dir, csv_file, transform=None, limit=5000):
         self.root_dir = root_dir
         self.transform = transform
         
-        # Load CSV and limit to `limit` rows for "Small Dataset" fast training
-        df = pd.read_csv(csv_file).head(limit)
+        # Load CSV and limit to `limit` rows if provided
+        df = pd.read_csv(csv_file)
+        if limit is not None:
+            df = df.head(limit)
         self.image_names = df['image_id'].values
-        
-        # Attributes: Male, Smiling, Eyeglasses (convert -1,1 to 0.0,1.0)
-        labels = df[['Male', 'Smiling', 'Eyeglasses']].values
-        self.labels = torch.tensor(np.where(labels == 1, 1.0, 0.0), dtype=torch.float32)
 
     def __len__(self):
         return len(self.image_names)
@@ -44,7 +43,7 @@ class CelebAConditionalDataset(torch.utils.data.Dataset):
         if self.transform:
             image = self.transform(image)
             
-        return image, self.labels[idx]
+        return image
 
 def train():
     try:
@@ -68,12 +67,12 @@ def train():
     ])
 
     print("Loading Images & Labels from CSV...")
-    # Initialize our custom Conditional Dataset
-    dataset = CelebAConditionalDataset(
+    # Initialize our custom Dataset (limit=None to use entire dataset)
+    dataset = CelebADataset(
         root_dir="dataset/celeba/", 
         csv_file="dataset/celeba/list_attr_celeba.csv", 
         transform=transform, 
-        limit=5000
+        limit=None
     )
 
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
@@ -88,33 +87,38 @@ def train():
     opt_disc = optim.Adam(disc.parameters(), lr=LEARNING_RATE, betas=(BETA1, 0.999))
     criterion = nn.BCEWithLogitsLoss()
 
-    # Fixed noise & labels for evaluating generator progression (e.g. 32 images: 16 Male Smiling, 16 Female Not Smiling)
+    # Fixed noise for evaluating generator progression
     fixed_noise = torch.randn(32, Z_DIM, 1, 1).to(device)
-    fixed_labels = torch.zeros(32, 3).to(device)
-    fixed_labels[:16] = torch.tensor([1.0, 1.0, 0.0]) # Male, Smiling, No Glasses
-    fixed_labels[16:] = torch.tensor([0.0, 0.0, 0.0]) # Female, Not Smiling, No Glasses
     
     os.makedirs("outputs", exist_ok=True)
+    
+    loss_log_path = "loss_log.csv"
+    with open(loss_log_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['epoch', 'loss_d', 'loss_g'])
     
     gen.train()
     disc.train()
 
     print("Starting Training Loop...")
     for epoch in range(NUM_EPOCHS):
+        epoch_loss_d = 0.0
+        epoch_loss_g = 0.0
+        num_batches = len(dataloader)
+        
         loop = tqdm(dataloader, leave=True)
-        for batch_idx, (real, labels) in enumerate(loop):
+        for batch_idx, real in enumerate(loop):
             current_batch_size = real.shape[0]
             real = real.to(device)
-            labels = labels.to(device)
             
             noise = torch.randn(current_batch_size, Z_DIM, 1, 1).to(device)
-            fake = gen(noise, labels)
+            fake = gen(noise)
 
             ### Train Discriminator
-            disc_real = disc(real, labels).reshape(-1)
+            disc_real = disc(real).reshape(-1)
             loss_disc_real = criterion(disc_real, torch.ones_like(disc_real))
             
-            disc_fake = disc(fake.detach(), labels).reshape(-1)
+            disc_fake = disc(fake.detach()).reshape(-1)
             loss_disc_fake = criterion(disc_fake, torch.zeros_like(disc_fake))
             
             loss_disc = (loss_disc_real + loss_disc_fake) / 2
@@ -124,7 +128,7 @@ def train():
             opt_disc.step()
 
             ### Train Generator
-            output = disc(fake, labels).reshape(-1)
+            output = disc(fake).reshape(-1)
             loss_gen = criterion(output, torch.ones_like(output))
             
             gen.zero_grad()
@@ -138,14 +142,24 @@ def train():
                 loss_g=loss_gen.item()
             )
             
+            epoch_loss_d += loss_disc.item()
+            epoch_loss_g += loss_gen.item()
+            
         # Save sample images per epoch
         with torch.no_grad():
-            fake = gen(fixed_noise, fixed_labels)
+            fake = gen(fixed_noise)
             img_grid = torchvision.utils.make_grid(fake[:32], normalize=True)
             plt.imshow(np.transpose(img_grid.cpu().numpy(), (1, 2, 0)))
             plt.axis("off")
             plt.savefig(f"outputs/epoch_{epoch}.png")
             plt.close()
+            
+        # Log average epoch loss
+        avg_loss_d = epoch_loss_d / num_batches
+        avg_loss_g = epoch_loss_g / num_batches
+        with open(loss_log_path, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([epoch, avg_loss_d, avg_loss_g])
 
     print("Training Finished. Saving model...")
     # Navigate up one directory folder as backend will look in root level

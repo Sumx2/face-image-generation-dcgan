@@ -12,14 +12,13 @@ FEATURES_GEN = 64
 # Number of feature maps in discriminator
 FEATURES_DISC = 64
 
-NUM_CLASSES = 3 # Male, Smiling, Eyeglasses
 
 class Discriminator(nn.Module):
-    def __init__(self, channels_img, features_d, num_classes=NUM_CLASSES):
+    def __init__(self, channels_img, features_d):
         super(Discriminator, self).__init__()
         self.disc = nn.Sequential(
-            # Input: N x (channels_img + num_classes) x 64 x 64
-            nn.Conv2d(channels_img + num_classes, features_d, kernel_size=4, stride=2, padding=1, bias=False),
+            # Input: N x channels_img x 64 x 64
+            nn.Conv2d(channels_img, features_d, kernel_size=4, stride=2, padding=1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
             # Input: N x features_d x 32 x 32
             self._block(features_d, features_d * 2, 4, 2, 1),
@@ -39,19 +38,15 @@ class Discriminator(nn.Module):
             nn.LeakyReLU(0.2, inplace=True)
         )
 
-    def forward(self, x, labels):
-        # labels: N x num_classes
-        labels = labels.view(labels.size(0), labels.size(1), 1, 1)
-        labels = labels.expand(-1, -1, x.size(2), x.size(3))
-        x = torch.cat([x, labels], dim=1) # Congregate on channel dim
+    def forward(self, x):
         return self.disc(x)
 
 class Generator(nn.Module):
-    def __init__(self, z_dim, channels_img, features_gen, num_classes=NUM_CLASSES):
+    def __init__(self, z_dim, channels_img, features_gen):
         super(Generator, self).__init__()
         self.gen = nn.Sequential(
-            # Input: N x (z_dim + num_classes) x 1 x 1
-            self._block(z_dim + num_classes, features_gen * 16, 4, 1, 0),  # N x features_gen*16 x 4 x 4
+            # Input: N x z_dim x 1 x 1
+            self._block(z_dim, features_gen * 16, 4, 1, 0),  # N x features_gen*16 x 4 x 4
             self._block(features_gen * 16, features_gen * 8, 4, 2, 1), # N x features_gen*8 x 8 x 8
             self._block(features_gen * 8, features_gen * 4, 4, 2, 1),  # N x features_gen*4 x 16 x 16
             self._block(features_gen * 4, features_gen * 2, 4, 2, 1),  # N x features_gen*2 x 32 x 32
@@ -69,11 +64,8 @@ class Generator(nn.Module):
             nn.ReLU(inplace=True)
         )
 
-    def forward(self, x, labels):
+    def forward(self, x):
         # x: N x z_dim x 1 x 1
-        # labels: N x num_classes
-        labels = labels.view(labels.size(0), labels.size(1), 1, 1) # N x num_classes x 1 x 1
-        x = torch.cat([x, labels], dim=1)
         return self.gen(x)
 
 def initialize_weights(model):

@@ -2,6 +2,8 @@ import base64
 from io import BytesIO
 import torch
 import torchvision.transforms as transforms
+import os
+import random
 
 def tensor_to_base64_images(tensor):
     """
@@ -31,3 +33,30 @@ def tensor_to_base64_images(tensor):
         base64_images.append(f"data:image/jpeg;base64,{img_str}")
 
     return base64_images
+
+def get_random_real_images(dataset_dir, count=4):
+    """
+    Fetches random real images from the dataset directory and returns them as Base64 strings.
+    """
+    try:
+        if not os.path.exists(dataset_dir):
+            return []
+            
+        all_files = os.listdir(dataset_dir)
+        image_files = [f for f in all_files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        if not image_files:
+            return []
+            
+        selected_files = random.sample(image_files, min(count, len(image_files)))
+        
+        base64_images = []
+        for file in selected_files:
+            file_path = os.path.join(dataset_dir, file)
+            with open(file_path, "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
+                base64_images.append(f"data:image/jpeg;base64,{encoded_string}")
+                
+        return base64_images
+    except Exception as e:
+        print(f"Error fetching real images: {e}")
+        return []
