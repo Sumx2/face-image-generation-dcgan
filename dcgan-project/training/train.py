@@ -17,7 +17,7 @@ import csv
 # Hyperparameters etc.
 LEARNING_RATE = 2e-4  # From DCGAN paper
 BATCH_SIZE = 128
-NUM_EPOCHS = 50 # Adjusted for A100 full dataset training
+NUM_EPOCHS = 80 # Adjusted for A100 full dataset training
 BETA1 = 0.5 # From DCGAN paper
 DATASET_ROOT = "dataset/"
 

@@ -75,12 +75,12 @@ def generate_faces(
 
 def generate_mock_loss_data():
     data = []
-    # simulate 100 epochs
-    for i in range(100):
+    # simulate 80 epochs
+    for i in range(80):
         # Discriminator starts high, goes down, stabilizes around 0.5-0.7
         loss_d = 1.2 * math.exp(-i/15) + 0.6 + random.uniform(-0.1, 0.1)
         # Generator starts high, drops, then slowly increases as D gets better, then stabilizes
-        loss_g = 2.5 * math.exp(-i/10) + 1.2 + random.uniform(-0.15, 0.15) + (i/100)
+        loss_g = 2.5 * math.exp(-i/10) + 1.2 + random.uniform(-0.15, 0.15) + (i/80)
         data.append({
             "epoch": i,
             "loss_d": round(max(0, loss_d), 4),
