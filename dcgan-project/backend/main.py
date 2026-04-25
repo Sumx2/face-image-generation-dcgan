@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import torch
 import os
 from pydantic import BaseModel
@@ -11,6 +12,11 @@ from model import Generator, Z_DIM, CHANNELS_IMG, FEATURES_GEN
 from utils import tensor_to_base64_images, get_random_real_images
 
 app = FastAPI(title="DCGAN Face Generator API")
+
+# Mount outputs directory for static file serving
+outputs_dir = "../training/outputs"
+if os.path.exists(outputs_dir):
+    app.mount("/outputs", StaticFiles(directory=outputs_dir), name="outputs")
 
 # Setup CORS for Frontend
 app.add_middleware(
@@ -112,3 +118,55 @@ def get_real_images(count: int = Query(4, ge=1, le=16, description="Number of re
     if not images:
         raise HTTPException(status_code=404, detail="Could not find real images in the dataset directory.")
     return {"images": images}
+
+@app.get("/epochs")
+def get_epochs():
+    """
+    Returns a sorted list of epoch images to visualize training progression.
+    """
+    outputs_dir = "../training/outputs"
+    if not os.path.exists(outputs_dir):
+        return {"epochs": []}
+        
+    files = [f for f in os.listdir(outputs_dir) if f.startswith("epoch_") and f.endswith(".png")]
+    
+    epochs = []
+    for f in files:
+        try:
+            ep_num = int(f.replace("epoch_", "").replace(".png", ""))
+            epochs.append({
+                "epoch": ep_num, 
+                "url": f"/outputs/{f}"
+            })
+        except ValueError:
+            pass
+            
+    epochs.sort(key=lambda x: x["epoch"])
+    return {"epochs": epochs}
+
+@app.get("/interpolate", response_model=GenerationResponse)
+def interpolate_faces(steps: int = Query(8, ge=2, le=16)):
+    """
+    Interpolates between two random latent vectors to show how the model transitions between faces.
+    """
+    if generator is None:
+        raise HTTPException(status_code=500, detail="Generator model not properly initialized.")
+        
+    try:
+        with torch.no_grad():
+            z1 = torch.randn(1, Z_DIM, 1, 1).to(DEVICE)
+            z2 = torch.randn(1, Z_DIM, 1, 1).to(DEVICE)
+            
+            alphas = torch.linspace(0, 1, steps).to(DEVICE)
+            interpolated_z = torch.zeros(steps, Z_DIM, 1, 1).to(DEVICE)
+            
+            for i, alpha in enumerate(alphas):
+                # Linear interpolation in latent space
+                interpolated_z[i] = z1 * (1 - alpha) + z2 * alpha
+                
+            fake_tensors = generator(interpolated_z)
+            base64_list = tensor_to_base64_images(fake_tensors)
+            
+        return {"images": base64_list}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

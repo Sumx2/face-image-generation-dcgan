@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Download, Sparkles, Image as ImageIcon, Loader2, Layers, RefreshCw, BarChart2, Activity, SplitSquareHorizontal } from 'lucide-react';
+import { Download, Sparkles, Image as ImageIcon, Loader2, Layers, RefreshCw, BarChart2, Activity, SplitSquareHorizontal, Play, Pause, SkipForward, SkipBack, Zap } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const API_URL = 'http://localhost:8000';
@@ -20,6 +20,14 @@ function App() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [metricsData, setMetricsData] = useState([]);
   const [metricsLoading, setMetricsLoading] = useState(false);
+  const [interpolationImages, setInterpolationImages] = useState([]);
+  const [interpolationLoading, setInterpolationLoading] = useState(false);
+  
+  // Epochs progression state
+  const [epochsData, setEpochsData] = useState([]);
+  const [currentEpochIndex, setCurrentEpochIndex] = useState(0);
+  const [epochsLoading, setEpochsLoading] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   // Load history from local storage on mount
   useEffect(() => {
@@ -35,12 +43,28 @@ function App() {
 
   // Fetch data based on tab selection
   useEffect(() => {
-    if (activeTab === 'metrics' && metricsData.length === 0) {
-      fetchMetrics();
+    if (activeTab === 'metrics') {
+      if (metricsData.length === 0) fetchMetrics();
+      if (epochsData.length === 0) fetchEpochs();
     } else if (activeTab === 'analysis' && realImages.length === 0) {
       fetchAnalysisData();
     }
-  }, [activeTab]);
+  }, [activeTab, metricsData.length, epochsData.length, realImages.length]);
+
+  const fetchEpochs = async () => {
+    setEpochsLoading(true);
+    try {
+      const response = await axios.get(`${API_URL}/epochs`);
+      setEpochsData(response.data.epochs);
+      if (response.data.epochs.length > 0) {
+        setCurrentEpochIndex(response.data.epochs.length - 1);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setEpochsLoading(false);
+    }
+  };
 
   const fetchAnalysisData = async () => {
     setAnalysisLoading(true);
@@ -51,12 +75,28 @@ function App() {
       }
       const response = await axios.get(`${API_URL}/real-images?count=${count}`);
       setRealImages(response.data.images);
+      
+      if (interpolationImages.length === 0) {
+          fetchInterpolation();
+      }
     } catch (err) {
       console.error(err);
       // Fall silent on error, handled in UI
     } finally {
       setAnalysisLoading(false);
     }
+  };
+
+  const fetchInterpolation = async () => {
+      setInterpolationLoading(true);
+      try {
+          const response = await axios.get(`${API_URL}/interpolate?steps=8`);
+          setInterpolationImages(response.data.images);
+      } catch (err) {
+          console.error(err);
+      } finally {
+          setInterpolationLoading(false);
+      }
   };
 
   const fetchMetrics = async () => {
@@ -117,6 +157,23 @@ function App() {
     setHistory([]);
     localStorage.removeItem('dcgan_history');
   };
+
+  // Auto-play effect for the epoch progression slider
+  useEffect(() => {
+    let interval;
+    if (isPlaying && epochsData.length > 0) {
+      interval = setInterval(() => {
+        setCurrentEpochIndex((prev) => {
+          if (prev >= epochsData.length - 1) {
+            setIsPlaying(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 300); // 300ms per epoch
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying, epochsData.length]);
 
   // Custom Tooltip for Recharts
   const CustomTooltip = ({ active, payload, label }) => {
@@ -370,6 +427,40 @@ function App() {
               </div>
             </div>
             
+            {/* Latent Space Interpolation */}
+            <div className="mt-8 glass-panel p-6 rounded-3xl">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Zap className="text-yellow-400 w-5 h-5" /> Latent Space Interpolation
+                  </h3>
+                  <p className="text-slate-400 text-sm mt-1">Proof that the AI learned a smooth "manifold" of faces, not just memorization. Watch it smoothly transition from Face A to Face B.</p>
+                </div>
+                <button
+                  onClick={fetchInterpolation}
+                  disabled={interpolationLoading}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors flex items-center gap-2 text-sm"
+                >
+                  {interpolationLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Generate New Path
+                </button>
+              </div>
+              
+              {interpolationImages.length > 0 ? (
+                <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl overflow-x-auto gap-2 border border-white/5">
+                  {interpolationImages.map((img, idx) => (
+                    <div key={idx} className={`shrink-0 rounded-lg overflow-hidden border ${idx === 0 || idx === interpolationImages.length - 1 ? 'border-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.3)] scale-105 z-10' : 'border-white/10 opacity-80'} aspect-square w-16 md:w-20 lg:w-24 transition-transform`}>
+                      <img src={img} alt={`Interpolation frame ${idx}`} className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="h-24 flex items-center justify-center border-2 border-dashed border-white/10 rounded-xl text-slate-500">
+                  {interpolationLoading ? "Calculating latent path..." : "No interpolation generated."}
+                </div>
+              )}
+            </div>
+
             {/* Interpretability Insights */}
             <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
                <div className="bg-slate-900/40 p-4 rounded-xl border border-white/5">
@@ -406,6 +497,23 @@ function App() {
                 A visual representation of the adversarial training process. A successful GAN training typically shows the Generator and Discriminator losses oscillating and converging to a stable equilibrium over time.
               </p>
             </div>
+
+            {metricsData.length > 0 && (
+              <div className="grid grid-cols-3 gap-6 mb-8">
+                <div className="glass-panel p-4 rounded-2xl border-l-4 border-l-purple-500">
+                  <p className="text-slate-400 text-sm mb-1">Final Generator Loss</p>
+                  <p className="text-3xl font-bold text-white">{metricsData[metricsData.length - 1].loss_g.toFixed(4)}</p>
+                </div>
+                <div className="glass-panel p-4 rounded-2xl border-l-4 border-l-blue-500">
+                  <p className="text-slate-400 text-sm mb-1">Final Discriminator Loss</p>
+                  <p className="text-3xl font-bold text-white">{metricsData[metricsData.length - 1].loss_d.toFixed(4)}</p>
+                </div>
+                <div className="glass-panel p-4 rounded-2xl border-l-4 border-l-emerald-500">
+                  <p className="text-slate-400 text-sm mb-1">Equilibrium Status</p>
+                  <p className="text-xl font-bold text-emerald-400">Converged</p>
+                </div>
+              </div>
+            )}
 
             <div className="glass-panel p-6 rounded-3xl mb-8">
               {metricsLoading ? (
@@ -467,6 +575,88 @@ function App() {
               )}
             </div>
             
+            {/* Training Progression Timeline */}
+            <div className="glass-panel p-6 rounded-3xl mb-8">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Layers className="text-pink-400 w-5 h-5" /> Training Progression
+                  </h3>
+                  <p className="text-slate-400 text-sm mt-1">Watch how the generator learns from pure noise to structured faces across epochs.</p>
+                </div>
+              </div>
+              
+              {epochsLoading ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-pink-500 mb-4" />
+                  <p className="text-slate-400">Loading progression data...</p>
+                </div>
+              ) : epochsData.length > 0 ? (
+                <div className="flex flex-col md:flex-row gap-8 items-center">
+                  <div className="w-full md:w-1/2 flex justify-center">
+                    <div className="rounded-2xl overflow-hidden border-2 border-white/10 relative shadow-2xl">
+                      <img 
+                        src={`${API_URL}${epochsData[currentEpochIndex].url}`} 
+                        alt={`Epoch ${epochsData[currentEpochIndex].epoch}`}
+                        className="w-full max-w-[400px] h-auto object-contain bg-black"
+                      />
+                      <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-md px-3 py-1 rounded-lg text-white font-mono text-sm border border-white/20">
+                        Epoch {epochsData[currentEpochIndex].epoch}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="w-full md:w-1/2 flex flex-col gap-6">
+                    <div className="flex items-center justify-center gap-4">
+                      <button 
+                        onClick={() => setCurrentEpochIndex(0)} 
+                        disabled={currentEpochIndex === 0}
+                        className="p-2 rounded-full bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-50 transition-colors"
+                      >
+                        <SkipBack className="w-5 h-5" />
+                      </button>
+                      <button 
+                        onClick={() => setIsPlaying(!isPlaying)} 
+                        className="p-4 rounded-full bg-indigo-600 text-white hover:bg-indigo-500 hover:scale-105 transition-all shadow-lg"
+                      >
+                        {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
+                      </button>
+                      <button 
+                        onClick={() => setCurrentEpochIndex(epochsData.length - 1)} 
+                        disabled={currentEpochIndex === epochsData.length - 1}
+                        className="p-2 rounded-full bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-50 transition-colors"
+                      >
+                        <SkipForward className="w-5 h-5" />
+                      </button>
+                    </div>
+                    
+                    <div className="w-full relative">
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max={epochsData.length - 1} 
+                        value={currentEpochIndex} 
+                        onChange={(e) => {
+                          setCurrentEpochIndex(parseInt(e.target.value));
+                          setIsPlaying(false);
+                        }}
+                        className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                      />
+                      <div className="flex justify-between text-xs text-slate-500 mt-2 font-mono">
+                        <span>Ep 0</span>
+                        <span>Ep {epochsData[epochsData.length - 1]?.epoch}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-500 border border-dashed border-white/10 rounded-xl">
+                  <ImageIcon className="w-8 h-8 mb-2 opacity-50" />
+                  <p>No epoch progression images found. Make sure outputs are downloaded.</p>
+                </div>
+              )}
+            </div>
+
             <div className="grid md:grid-cols-2 gap-6">
               <div className="bg-slate-900/40 p-6 rounded-2xl border border-white/5">
                 <h4 className="text-white font-bold mb-2 flex items-center gap-2">
